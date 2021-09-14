@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<LanguageData>
+
+	<RG.RiverDensity>River density</RG.RiverDensity>
+	<RG.AncientRoadDensity>Ancient road density</RG.AncientRoadDensity>
+	<RG.FactionRoadDensity>Faction road density</RG.FactionRoadDensity>
+	<RG.MountainDensity>Mountain density</RG.MountainDensity>
+	<RG.SeaLevel>Sea level</RG.SeaLevel>
+	<RG.BiomeCommonalities>Biome commonalities</RG.BiomeCommonalities>
+</LanguageData>
