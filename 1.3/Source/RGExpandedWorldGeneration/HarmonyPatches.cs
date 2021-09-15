@@ -321,7 +321,7 @@ namespace RGExpandedWorldGeneration
                         {
                             if (WorldGenerator.tmpGenSteps[i] == DefDatabase<WorldGenStepDef>.GetNamed("Terrain"))
                             {
-                                //WorldGenerator.tmpGenSteps[i].worldGenStep.GenerateFresh(window.seedString);
+                                WorldGenerator.tmpGenSteps[i].worldGenStep.GenerateFresh(window.seedString);
                             }
                         }
                     }
