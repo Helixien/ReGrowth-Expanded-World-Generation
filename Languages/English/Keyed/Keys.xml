@@ -6,5 +6,8 @@
 	<RG.FactionRoadDensity>Faction road density</RG.FactionRoadDensity>
 	<RG.MountainDensity>Mountain density</RG.MountainDensity>
 	<RG.SeaLevel>Sea level</RG.SeaLevel>
+	<RG.Biomes>Biomes</RG.Biomes>
 	<RG.BiomeCommonalities>Biome commonalities</RG.BiomeCommonalities>
+	<RG.GeneratePreview>Generate preview</RG.GeneratePreview>
+	
 </LanguageData>
