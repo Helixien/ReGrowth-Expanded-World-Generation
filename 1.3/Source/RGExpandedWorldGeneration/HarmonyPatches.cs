@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using Verse;
@@ -227,7 +228,19 @@ namespace RGExpandedWorldGeneration
         {
             if (Page_CreateWorldParams_Patch.dirty && __instance is WorldLayer_Glow && Find.WindowStack.WindowOfType<Page_CreateWorldParams>() != null)
             {
-                Log.Message("Removing it");
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(Rand), "EnsureStateStackEmpty")]
+    public static class EnsureStateStackEmpty_Patch
+    {
+        public static bool Prefix()
+        {
+            if (Page_CreateWorldParams_Patch.thread != null)
+            {
                 return false;
             }
             return true;
@@ -251,9 +264,17 @@ namespace RGExpandedWorldGeneration
 
         public static Texture2D worldPreview;
 
-        private static int dirtyUpdate = 0;
+        private static int dirtyUpdate = -1;
 
         private static bool biomeCoverageInit;
+
+        private static Stopwatch total = new Stopwatch();
+
+        public static bool isActive;
+
+        private static World threadedWorld;
+
+        public static Thread thread;
         private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
         {
             var doGuiMethod = AccessTools.Method(typeof(Page_CreateWorldParams_Patch), "DoGui");
@@ -286,15 +307,33 @@ namespace RGExpandedWorldGeneration
             DoWorldPreviewArea(__instance);
         }
 
-        private static Stopwatch total = new Stopwatch();
         private static void DoGui(Page_CreateWorldParams window, ref float num, float width2)
         {
+            isActive = true;
             window.absorbInputAroundWindow = false;
             UpdateCurPreset(window);
             DoSlider(0, ref num, width2, "RG.RiverDensity".Translate(), ref curWorldGenerationPreset.riverDensity);
             DoSlider(0, ref num, width2, "RG.MountainDensity".Translate(), ref curWorldGenerationPreset.mountainDensity);
             DoSlider(0, ref num, width2, "RG.SeaLevel".Translate(), ref curWorldGenerationPreset.seaLevel);
 
+            var labelRect = new Rect(0f, num + 104, 80, 30);
+            Widgets.Label(labelRect, "RG.Biomes".Translate());
+            var outRect = new Rect(labelRect.x, labelRect.yMax, width2 + 195, DoWindowContents_Patch.LowerWidgetHeight - 50);
+            Rect viewRect = new Rect(outRect.x, outRect.y, outRect.width - 16f, (DefDatabase<BiomeDef>.DefCount * 40) + 10);
+            Widgets.DrawBoxSolid(new Rect(outRect.x, outRect.y, outRect.width - 16f, outRect.height), BackgroundColor);
+            Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
+            num = outRect.y + 15;
+            foreach (var biomeDef in DefDatabase<BiomeDef>.AllDefs.OrderBy(x => x.label ?? x.defName))
+            {
+                var value = curWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
+                DoSliderBiomeCommonality(10, ref num, width2, biomeDef.label?.CapitalizeFirst() ?? biomeDef.defName, ref value);
+                curWorldGenerationPreset.biomeCommonalities[biomeDef.defName] = value;
+            }
+            Widgets.EndScrollView();
+        }
+
+        private static void DoBiomeShit(Page_CreateWorldParams window)
+        {
             if (!biomeCoverageInit)
             {
                 biomeCoverageInit = true;
@@ -333,23 +372,7 @@ namespace RGExpandedWorldGeneration
                 Rand.PopState();
                 DeepProfiler.End();
                 Current.CreatingWorld = null;
-                Log.Message("Biome score: " + (float)total.ElapsedTicks / Stopwatch.Frequency);
-
             }
-            var labelRect = new Rect(0f, num + 104, 80, 30);
-            Widgets.Label(labelRect, "RG.Biomes".Translate());
-            var outRect = new Rect(labelRect.x, labelRect.yMax, width2 + 195, DoWindowContents_Patch.LowerWidgetHeight - 50);
-            Rect viewRect = new Rect(outRect.x, outRect.y, outRect.width - 16f, (DefDatabase<BiomeDef>.DefCount * 40) + 10);
-            Widgets.DrawBoxSolid(new Rect(outRect.x, outRect.y, outRect.width - 16f, outRect.height), BackgroundColor);
-            Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
-            num = outRect.y + 15;
-            foreach (var biomeDef in DefDatabase<BiomeDef>.AllDefs.OrderBy(x => x.label ?? x.defName))
-            {
-                var value = curWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
-                DoSliderBiomeCommonality(10, ref num, width2, biomeDef.label?.CapitalizeFirst() ?? biomeDef.defName, ref value);
-                curWorldGenerationPreset.biomeCommonalities[biomeDef.defName] = value;
-            }
-            Widgets.EndScrollView();
         }
         private static void DoWorldPreviewArea(Page_CreateWorldParams window)
         {
@@ -367,30 +390,21 @@ namespace RGExpandedWorldGeneration
             {
                 generateButtonRect = new Rect(previewAreaRect.xMax - 35, previewAreaRect.y, 35, 35);
             }
+
             DrawGeneratePreviewButton(window, generateButtonRect);
-            if (dirty)
+            if (thread is null && Find.World != null && Find.World.info.name != "DefaultWorldName")
             {
-                Find.World.renderer.wantedMode = WorldRenderMode.Planet;
-                Find.WorldCamera.gameObject.SetActive(true);
-                Find.WorldCameraDriver.desiredAltitude = 700;
-                Find.WorldCameraDriver.Update();
-            }
-            if (dirtyUpdate == 1)
-            {
-                worldPreview = GetWorldCameraPreview(Find.WorldCamera, WorldCameraHeight, WorldCameraWidth);
-                Find.WorldCamera.gameObject.SetActive(false);
-                Find.World.renderer.wantedMode = WorldRenderMode.None;
-                dirty = false;
-                dirtyUpdate = 0;
-            }
-            if (dirty)
-            {
+                if (dirtyUpdate <= 0)
+                {
+                    worldPreview = GetWorldCameraPreview(Find.WorldCamera, WorldCameraHeight, WorldCameraWidth);
+                }
+                if (dirtyUpdate >= 0)
+                {
+                    GUI.DrawTexture(previewAreaRect, worldPreview);
+                }
+
                 dirtyUpdate++;
-            }
-            
-            if (worldPreview != null)
-            {
-                GUI.DrawTexture(previewAreaRect, worldPreview);
+
             }
 
             float numY = previewAreaRect.yMax - 40;
@@ -408,24 +422,31 @@ namespace RGExpandedWorldGeneration
                     if (Event.current.button == 0)
                     {
                         dirty = false;
-                        dirtyUpdate = 0;
+                        dirtyUpdate = -1;
                         worldPreview = null;
-                        Find.GameInitData.ResetWorldRelatedMapInitData();
-                        Current.Game.World = GenerateWorld(window.planetCoverage, window.seedString, window.rainfall, window.temperature, window.population, window.factionCounts);
-                        Find.World.features = new WorldFeatures();
-                        MemoryUtility.UnloadUnusedUnityAssets();
-                        for (int i = 0; i < Find.World.renderer.layers.Count; i++)
+                        thread = new Thread(delegate ()
                         {
-                            var layer = Find.World.renderer.layers[i];
-                            if (layer is WorldLayer_Hills || layer is WorldLayer_Rivers || layer is WorldLayer_Roads || layer is WorldLayer_Terrain)
-                            {
-                                layer.RegenerateNow();
-                            }
-                        }
-                        dirty = true;
+                            GenerateWorld(window.planetCoverage, window.seedString, window.rainfall, window.temperature, window.population, window.factionCounts);
+                        });
+                        thread.Start();
                         Event.current.Use();
                     }
                 }
+            }
+            if (thread != null && !thread.IsAlive && threadedWorld != null)
+            {
+                for (int i = 0; i < Find.World.renderer.layers.Count; i++)
+                {
+                    var layer = Find.World.renderer.layers[i];
+                    if (layer is WorldLayer_Hills || layer is WorldLayer_Rivers || layer is WorldLayer_Roads || layer is WorldLayer_Terrain)
+                    {
+                        Log.Message("Regenerating: " + layer);
+                        layer.RegenerateNow();
+                    }
+                }
+                threadedWorld = null;
+                thread = null;
+                dirty = true;
             }
         }
 
@@ -439,13 +460,18 @@ namespace RGExpandedWorldGeneration
             DefDatabase<WorldGenStepDef>.GetNamed("AncientRoads"),
             DefDatabase<WorldGenStepDef>.GetNamed("Roads")
         };
-        public static World GenerateWorld(float planetCoverage, string seedString, OverallRainfall overallRainfall, OverallTemperature overallTemperature, OverallPopulation population, Dictionary<FactionDef, int> factionCounts = null)
+        public static void GenerateWorld(float planetCoverage, string seedString, OverallRainfall overallRainfall, OverallTemperature overallTemperature, OverallPopulation population, Dictionary<FactionDef, int> factionCounts = null)
         {
             Rand.PushState();
             int seed = (Rand.Seed = WorldGenerator.GetSeedFromSeedString(seedString));
+            Find.GameInitData.ResetWorldRelatedMapInitData();
             try
             {
-                Current.CreatingWorld = new World();
+                Current.CreatingWorld = new World
+                {
+                    renderer = new WorldRenderer(),
+                    UI = new WorldInterface(),
+                };
                 Current.CreatingWorld.info.seedString = seedString;
                 Current.CreatingWorld.info.planetCoverage = planetCoverage;
                 Current.CreatingWorld.info.overallRainfall = overallRainfall;
@@ -469,7 +495,11 @@ namespace RGExpandedWorldGeneration
                         Log.Error("Error in WorldGenStep: " + ex);
                     }
                 }
-                return Current.CreatingWorld;
+                threadedWorld = Current.CreatingWorld;
+
+                Current.Game.World = threadedWorld;
+                Find.World.features = new WorldFeatures();
+                MemoryUtility.UnloadUnusedUnityAssets();
             }
             finally
             {
@@ -479,6 +509,13 @@ namespace RGExpandedWorldGeneration
         }
         private static Texture2D GetWorldCameraPreview(Camera worldCamera, int width, int height)
         {
+            Find.World.renderer.wantedMode = WorldRenderMode.Planet;
+            Find.WorldCamera.gameObject.SetActive(true);
+            Find.World.UI.Reset();
+            Find.WorldCameraDriver.desiredAltitude = 800;
+            Find.WorldCameraDriver.altitude = 800;
+            Find.WorldCameraDriver.ApplyPositionToGameObject();
+
             Rect rect = new Rect(0, 0, width, height);
             RenderTexture renderTexture = new RenderTexture(width, height, 24);
             Texture2D screenShot = new Texture2D(width, height, TextureFormat.RGBA32, false);
@@ -486,11 +523,21 @@ namespace RGExpandedWorldGeneration
             worldCamera.targetTexture = renderTexture;
             worldCamera.Render();
 
+            ExpandableWorldObjectsUtility.ExpandableWorldObjectsUpdate();
+            Find.World.renderer.DrawWorldLayers();
+            Find.World.dynamicDrawManager.DrawDynamicWorldObjects();
+            Find.World.features.UpdateFeatures();
+            NoiseDebugUI.RenderPlanetNoise();
+            WorldComponentUtility.WorldComponentUpdate(Find.World);
+
             RenderTexture.active = renderTexture;
             screenShot.ReadPixels(rect, 0, 0);
             screenShot.Apply();
             worldCamera.targetTexture = null;
             RenderTexture.active = null;
+
+            Find.WorldCamera.gameObject.SetActive(false);
+            Find.World.renderer.wantedMode = WorldRenderMode.None;
             return screenShot;
         }
         private static void UpdateCurPreset(Page_CreateWorldParams window)
