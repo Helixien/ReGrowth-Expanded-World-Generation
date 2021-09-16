@@ -41,6 +41,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="RGExpandedWorldGenerationSettings.cs" />
+    <Compile Include="Utils.cs" />
     <Compile Include="WorldGenerationPreset.cs" />
     <Compile Include="HarmonyPatches.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

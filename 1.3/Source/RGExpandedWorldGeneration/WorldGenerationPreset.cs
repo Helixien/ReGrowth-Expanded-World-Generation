@@ -26,11 +26,10 @@ namespace RGExpandedWorldGeneration
 		public float factionRoadDensity;
 		public float mountainDensity;
 		public float seaLevel;
-
 		public void Init()
         {
 			seedString = GenText.RandomSeedString();
-			planetCoverage = ((!Prefs.DevMode || !UnityData.isEditor) ? 0.3f : 0.05f);
+			planetCoverage = 0.3f;
 			rainfall = OverallRainfall.Normal;
 			temperature = OverallTemperature.Normal;
 			population = OverallPopulation.Normal;
@@ -41,6 +40,44 @@ namespace RGExpandedWorldGeneration
 			seaLevel = 1f;
 			ResetFactionCounts();
 			ResetBiomeCommonalities();
+		}
+
+		public bool IsDifferentFrom(WorldGenerationPreset other)
+		{
+			if (seedString != other.seedString || planetCoverage != other.planetCoverage || rainfall != other.rainfall || temperature != other.temperature
+				|| population != other.population || riverDensity != other.riverDensity || ancientRoadDensity != other.ancientRoadDensity
+				|| factionRoadDensity != other.factionRoadDensity || mountainDensity != other.mountainDensity || seaLevel != other.seaLevel)
+            {
+				return true;
+            }
+
+			if (factionCounts.Count != other.factionCounts.Count || !factionCounts.ContentEquals(other.factionCounts))
+			{
+				return true;
+			}
+			if (biomeCommonalities.Count != other.biomeCommonalities.Count || !biomeCommonalities.ContentEquals(other.biomeCommonalities))
+			{
+				return true;
+            }
+			return false;
+		}
+
+		public WorldGenerationPreset MakeCopy()
+        {
+			var copy = new WorldGenerationPreset();
+			copy.factionCounts = this.factionCounts.ToDictionary(x => x.Key, y => y.Value);
+			copy.biomeCommonalities = this.biomeCommonalities.ToDictionary(x => x.Key, y => y.Value);
+			copy.seedString = this.seedString;
+			copy.planetCoverage = this.planetCoverage;
+			copy.rainfall = this.rainfall;
+			copy.temperature = this.temperature;
+			copy.population = this.population;
+			copy.riverDensity = this.riverDensity;
+			copy.ancientRoadDensity = this.ancientRoadDensity;
+			copy.factionRoadDensity = this.factionRoadDensity;
+			copy.mountainDensity = this.mountainDensity;
+			copy.seaLevel = this.seaLevel;
+			return copy;
 		}
 		private void ResetFactionCounts()
 		{
