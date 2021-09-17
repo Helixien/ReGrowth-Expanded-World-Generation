@@ -12,6 +12,14 @@ using Verse.AI;
 
 namespace RGExpandedWorldGeneration
 {
+    class RGExpandedWorldGenerationSettingsMod : Mod
+    {
+        public static RGExpandedWorldGenerationSettings settings;
+        public RGExpandedWorldGenerationSettingsMod(ModContentPack content) : base(content)
+        {
+            settings = base.GetSettings<RGExpandedWorldGenerationSettings>();
+        }
+    }
     class RGExpandedWorldGenerationSettings : ModSettings
     {
         public static WorldGenerationPreset curWorldGenerationPreset;

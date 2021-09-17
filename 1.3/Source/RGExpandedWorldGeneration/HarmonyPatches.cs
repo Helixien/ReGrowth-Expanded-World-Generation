@@ -85,7 +85,7 @@ namespace RGExpandedWorldGeneration
         private static float GetScoreAdjusted(BiomeDef biomeDef, float score)
         {
             score += Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
-            var biomeCommonalityOverride = Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
+            var biomeCommonalityOverride = Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] / 10f;
             if (biomeCommonalityOverride == 0)
             {
                 return -999 + Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
@@ -254,6 +254,20 @@ namespace RGExpandedWorldGeneration
         }
     }
 
+    [HarmonyPatch(typeof(GenTemperature), "SeasonalShiftAmplitudeAt", null)]
+    public static class GenTemperature_SeasonalShiftAmplitudeAt
+    {
+        public static void Postfix(int tile, ref float __result)
+        {
+            if (Find.WorldGrid.LongLatOf(tile).y >= 0f)
+            {
+                __result = WorldComponent_WorldGenerator.mappedValues[WorldComponent_WorldGenerator.Instance.axialTilt].Evaluate(Find.WorldGrid.DistanceFromEquatorNormalized(tile));
+                return;
+            }
+            __result = -WorldComponent_WorldGenerator.mappedValues[WorldComponent_WorldGenerator.Instance.axialTilt].Evaluate(Find.WorldGrid.DistanceFromEquatorNormalized(tile));
+        }
+    }
+
     [HarmonyPatch(typeof(Page_CreateWorldParams), "Reset")]
     public static class Reset_Patch
     {
@@ -263,7 +277,33 @@ namespace RGExpandedWorldGeneration
             {
                 Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.Reset();
             }
-            Page_CreateWorldParams_Patch.slidersInit = false;
+        }
+    }
+
+    [HarmonyPatch(typeof(Page_CreateWorldParams), "CanDoNext")]
+    public static class CanDoNext_Patch
+    {
+        public static void Prefix()
+        {
+            if (Page_CreateWorldParams_Patch.thread != null)
+            {
+                Page_CreateWorldParams_Patch.thread.Abort();
+                Page_CreateWorldParams_Patch.thread = null;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Page), "DoBottomButtons")]
+    public static class DoBottomButtons_Patch
+    {
+        public static bool Prefix(Page __instance, Rect rect, string nextLabel = null, string midLabel = null, Action midAct = null, bool showNext = true, bool doNextOnKeypress = true)
+        {
+            if (__instance is Page_CreateWorldParams createWorldParams)
+            {
+                Page_CreateWorldParams_Patch.DoBottomButtons(createWorldParams, rect, nextLabel, midLabel, midAct, showNext, doNextOnKeypress);
+                return false;
+            }
+            return true;
         }
     }
 
@@ -284,8 +324,6 @@ namespace RGExpandedWorldGeneration
 
         public static Texture2D worldPreview;
 
-        private static Stopwatch total = new Stopwatch();
-
         public static bool isActive;
 
         private static World threadedWorld;
@@ -295,6 +333,8 @@ namespace RGExpandedWorldGeneration
         public static int updatePreviewCounter;
         private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
         {
+            var planetCoverage = AccessTools.Field(typeof(Page_CreateWorldParams), "planetCoverage");
+            var doGlobeCoverageSliderMethod = AccessTools.Method(typeof(Page_CreateWorldParams_Patch), "DoGlobeCoverageSlider");
             var doGuiMethod = AccessTools.Method(typeof(Page_CreateWorldParams_Patch), "DoGui");
             var endGroupMethod = AccessTools.Method(typeof(GUI), "EndGroup");
             var codes = instructions.ToList();
@@ -303,7 +343,18 @@ namespace RGExpandedWorldGeneration
             for (var i = 0; i < codes.Count; i++)
             {
                 var code = codes[i];
-                yield return code;
+                if (codes[i].opcode == OpCodes.Ldloc_S && codes[i].operand is LocalBuilder lb && lb.LocalIndex == 9 
+                    && codes[i + 2].LoadsField(planetCoverage))
+                {
+                    i += codes.FirstIndexOf(x => x.Calls(AccessTools.Method(typeof(WindowStack), "Add")) && codes.IndexOf(x) > i) - i;
+                    yield return new CodeInstruction(OpCodes.Ldarg_0);
+                    yield return new CodeInstruction(OpCodes.Ldloc_S, 9);
+                    yield return new CodeInstruction(OpCodes.Call, doGlobeCoverageSliderMethod);
+                }
+                else
+                {
+                    yield return code;
+                }
                 if (!found && codes[i + 1].Calls(endGroupMethod))
                 {
                     yield return new CodeInstruction(OpCodes.Ldarg_0);
@@ -315,46 +366,88 @@ namespace RGExpandedWorldGeneration
             }
         }
 
+        public static void DoBottomButtons(Page_CreateWorldParams window, Rect rect, string nextLabel = null, string midLabel = null, Action midAct = null, bool showNext = true, bool doNextOnKeypress = true)
+        {
+            float y = rect.y + rect.height - 38f;
+            Text.Font = GameFont.Small;
+            string label = "Back".Translate();
+            var backRect = new Rect(rect.x, y, Page_CreateWorldParams.BottomButSize.x, Page_CreateWorldParams.BottomButSize.y);
+            if ((Widgets.ButtonText(backRect, label) 
+                || KeyBindingDefOf.Cancel.KeyDownEvent) && window.CanDoBack())
+            {
+                window.DoBack();
+            }
+            if (showNext)
+            {
+                if (nextLabel.NullOrEmpty())
+                {
+                    nextLabel = "Next".Translate();
+                }
+                Rect rect2 = new Rect(rect.x + rect.width - Page_CreateWorldParams.BottomButSize.x, y, Page_CreateWorldParams.BottomButSize.x, Page_CreateWorldParams.BottomButSize.y);
+                if ((Widgets.ButtonText(rect2, nextLabel) || (doNextOnKeypress && KeyBindingDefOf.Accept.KeyDownEvent)) && window.CanDoNext())
+                {
+                    window.DoNext();
+                }
+                UIHighlighter.HighlightOpportunity(rect2, "NextPage");
+            }
+
+            var savePresetRect = new Rect(backRect.xMax + 100, y, Page_CreateWorldParams.BottomButSize.x, Page_CreateWorldParams.BottomButSize.y);
+            string labelSavePreset = "RG.SavePreset".Translate();
+            if (Widgets.ButtonText(savePresetRect, labelSavePreset))
+            {
+                var saveWindow = new Dialog_PresetList_Save(window);
+                Find.WindowStack.Add(saveWindow);
+            }
+
+            var loadPresetRect = new Rect(savePresetRect.xMax + 15, y, Page_CreateWorldParams.BottomButSize.x, Page_CreateWorldParams.BottomButSize.y);
+            string labelLoadPreset = "RG.LoadPreset".Translate();
+            if (Widgets.ButtonText(loadPresetRect, labelLoadPreset))
+            {
+                var loadWindow = new Dialog_PresetList_Load(window);
+                Find.WindowStack.Add(loadWindow);
+            }
+
+            var midActRect = new Rect(loadPresetRect.xMax + 15, y, Page_CreateWorldParams.BottomButSize.x, Page_CreateWorldParams.BottomButSize.y);
+            if (midAct != null && Widgets.ButtonText(midActRect, midLabel))
+            {
+                midAct();
+            }
+        }
+
         private static void Postfix(Page_CreateWorldParams __instance)
         {
             DoWorldPreviewArea(__instance);
         }
 
-        public static bool slidersInit;
+        private static void DoGlobeCoverageSlider(Page_CreateWorldParams window, Rect rect)
+        {
+            var value = (double)Widgets.HorizontalSlider(rect, window.planetCoverage, 0.05f, 1, false, (window.planetCoverage * 100).ToString() + "%", "RG.Small".Translate(), "RG.Large".Translate()) * 100;
+            window.planetCoverage = ((float)Math.Round(value / 5) * 5) / 100;
+        }
         private static void DoGui(Page_CreateWorldParams window, ref float num, float width2)
         {
             isActive = true;
             window.absorbInputAroundWindow = false;
             UpdateCurPreset(window);
-            DoSlider(0, ref num, width2, "RG.RiverDensity".Translate(), ref tmpWorldGenerationPreset.riverDensity);
-            DoSlider(0, ref num, width2, "RG.MountainDensity".Translate(), ref tmpWorldGenerationPreset.mountainDensity);
-            DoSlider(0, ref num, width2, "RG.SeaLevel".Translate(), ref tmpWorldGenerationPreset.seaLevel);
+            DoSlider(0, ref num, width2, "RG.RiverDensity".Translate(), ref tmpWorldGenerationPreset.riverDensity, "None".Translate());
+            DoSlider(0, ref num, width2, "RG.MountainDensity".Translate(), ref tmpWorldGenerationPreset.mountainDensity, "None".Translate());
+            DoSlider(0, ref num, width2, "RG.SeaLevel".Translate(), ref tmpWorldGenerationPreset.seaLevel, "None".Translate());
 
-            var labelRect = new Rect(0f, num + 104, 80, 30);
+            num += 40f;
+            var labelRect = new Rect(0, num, 200f, 30f);
+            Widgets.Label(labelRect, "RG.AxialTilt".Translate());
+            Rect slider = new Rect(labelRect.xMax, num, width2, 30f);
+            tmpWorldGenerationPreset.axialTilt = (AxialTilt)Mathf.RoundToInt(Widgets.HorizontalSlider(slider, 
+                (float)tmpWorldGenerationPreset.axialTilt, 0f, AxialTiltUtility.EnumValuesCount - 1, middleAlignment: true, "PlanetRainfall_Normal".Translate(), "PlanetRainfall_Low".Translate(), "PlanetRainfall_High".Translate(), 1f));
+
+
+            labelRect = new Rect(0f, num + 64, 80, 30);
             Widgets.Label(labelRect, "RG.Biomes".Translate());
             var outRect = new Rect(labelRect.x, labelRect.yMax - 3, width2 + 195, DoWindowContents_Patch.LowerWidgetHeight - 50);
             Rect viewRect = new Rect(outRect.x, outRect.y, outRect.width - 16f, (DefDatabase<BiomeDef>.DefCount * 90) + 10);
             Rect rect3 = new Rect(outRect.xMax - 200f - 16f, labelRect.y, 200f, Text.LineHeight);
-            if (!tmpWorldGenerationPreset.biomeCommonalities.All(x => x.Value == 1f) || !tmpWorldGenerationPreset.biomeScoreOffsets.All(y => y.Value == 0f))
-            {
-                if (slidersInit || updatePreviewCounter < 30)
-                {
-                    if (Widgets.ButtonText(rect3, "ResetFactionsToDefault".Translate()))
-                    {
-                        tmpWorldGenerationPreset.ResetBiomeCommonalities();
-                        tmpWorldGenerationPreset.ResetBiomeScoreOffsets();
-                        slidersInit = false;
-                    }
-                    else
-                    {
-                        slidersInit = true;
-                    }
-                }
-            }
-            else
-            {
-                slidersInit = false;
-            }
+
+
 
             Widgets.DrawBoxSolid(new Rect(outRect.x, outRect.y, outRect.width - 16f, outRect.height), BackgroundColor);
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
@@ -364,6 +457,15 @@ namespace RGExpandedWorldGeneration
                 DoBiomeSliders(biomeDef, 10, ref num, biomeDef.label?.CapitalizeFirst() ?? biomeDef.defName);
             }
             Widgets.EndScrollView();
+
+            if (!tmpWorldGenerationPreset.biomeCommonalities.All(x => x.Value == 10) || !tmpWorldGenerationPreset.biomeScoreOffsets.All(y => y.Value == 0))
+            {
+                if (Widgets.ButtonText(rect3, "ResetFactionsToDefault".Translate()))
+                {
+                    tmpWorldGenerationPreset.ResetBiomeCommonalities();
+                    tmpWorldGenerationPreset.ResetBiomeScoreOffsets();
+                }
+            }
 
             if (RGExpandedWorldGenerationSettings.curWorldGenerationPreset is null)
             {
@@ -436,10 +538,26 @@ namespace RGExpandedWorldGeneration
             }
 
             float numY = previewAreaRect.yMax - 40;
-            DoSlider(previewAreaRect.x - 55, ref numY, 256, "RG.AncientRoadDensity".Translate(), ref tmpWorldGenerationPreset.ancientRoadDensity);
-            DoSlider(previewAreaRect.x - 55, ref numY, 256, "RG.FactionRoadDensity".Translate(), ref tmpWorldGenerationPreset.factionRoadDensity);
+            DoSlider(previewAreaRect.x - 55, ref numY, 256, "RG.AncientRoadDensity".Translate(), ref tmpWorldGenerationPreset.ancientRoadDensity, "None".Translate());
+            DoSlider(previewAreaRect.x - 55, ref numY, 256, "RG.FactionRoadDensity".Translate(), ref tmpWorldGenerationPreset.factionRoadDensity, "None".Translate());
         }
 
+        public static void ApplyChanges(Page_CreateWorldParams window)
+        {
+            window.rainfall = tmpWorldGenerationPreset.rainfall;
+            window.population = tmpWorldGenerationPreset.population;
+            window.planetCoverage = tmpWorldGenerationPreset.planetCoverage;
+            window.seedString = tmpWorldGenerationPreset.seedString;
+            window.temperature = tmpWorldGenerationPreset.temperature;
+            foreach (var data in tmpWorldGenerationPreset.factionCounts)
+            {
+                var factionDef = DefDatabase<FactionDef>.GetNamedSilentFail(data.Key);
+                if (factionDef != null)
+                {
+                    window.factionCounts[factionDef] = data.Value;
+                }
+            }
+        }
         private static bool IsBlack(Texture2D texture)
         {
             var pixel = texture.GetPixel(texture.width / 2, texture.height / 2);
@@ -615,14 +733,14 @@ namespace RGExpandedWorldGeneration
             tmpWorldGenerationPreset.rainfall = window.rainfall;
             tmpWorldGenerationPreset.population = window.population;
         }
-        private static void DoSlider(float x, ref float num, float width2, string label, ref float field)
+        private static void DoSlider(float x, ref float num, float width2, string label, ref float field, string leftLabel)
         {
             num += 40f;
             var labelRect = new Rect(x, num, 200f, 30f);
             Widgets.Label(labelRect, label);
             Rect slider = new Rect(labelRect.xMax, num, width2, 30f);
             field = Widgets.HorizontalSlider(slider, (int)(field * 3f), 0, 6, middleAlignment: true, 
-                "PlanetRainfall_Normal".Translate(), "PlanetRainfall_Low".Translate(), "PlanetRainfall_High".Translate(), 1f) / 3f;
+                "PlanetRainfall_Normal".Translate(), leftLabel, "PlanetRainfall_High".Translate(), 1f) / 3f;
 
         }
         private static void DoBiomeSliders(BiomeDef biomeDef, float x, ref float num, string label)
@@ -631,17 +749,35 @@ namespace RGExpandedWorldGeneration
             Widgets.Label(labelRect, label);
             num += 10;
             Rect biomeCommonalityLabel = new Rect(labelRect.x, num + 5, 70, 30);
+            var value = tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
+            if (value < 10f)
+            {
+                GUI.color = Color.red;
+            }
+            else if (value > 10f)
+            {
+                GUI.color = Color.green;
+            }
             Widgets.Label(biomeCommonalityLabel, "RG.Commonality".Translate());
             Rect biomeCommonalitySlider = new Rect(biomeCommonalityLabel.xMax + 5, num, 340, 30f);
-            var value = tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
-            tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] = Widgets.HorizontalSlider(biomeCommonalitySlider, value, 0f, 2f, false, (value * 100).ToStringDecimalIfSmall() + "%");
+            tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] = (int)Widgets.HorizontalSlider(biomeCommonalitySlider, value, 0, 20, false, (value * 10).ToString() + "%");
+            GUI.color = Color.white;
             num += 30f;
 
             Rect biomeOffsetLabel = new Rect(labelRect.x, num + 5, 70, 30);
+            var value2 = tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
+            if (value2 < 0f)
+            {
+                GUI.color = Color.red;
+            }
+            else if (value2 > 0f)
+            {
+                GUI.color = Color.green;
+            }
             Widgets.Label(biomeOffsetLabel, "RG.ScoreOffset".Translate());
             Rect scoreOffsetSlider = new Rect(biomeOffsetLabel.xMax + 5, biomeCommonalitySlider.yMax, 340, 30f);
-            var value2 = tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
-            tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName] = Widgets.HorizontalSlider(scoreOffsetSlider, value2, -100f, 100f, false, value2.ToStringDecimalIfSmall());
+            tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName] = (int)Widgets.HorizontalSlider(scoreOffsetSlider, value2, -100, 100, false, value2.ToString());
+            GUI.color = Color.white;
             num += 50f;
         }
     }

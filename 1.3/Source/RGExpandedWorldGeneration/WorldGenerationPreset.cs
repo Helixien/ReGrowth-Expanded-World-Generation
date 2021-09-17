@@ -15,8 +15,8 @@ namespace RGExpandedWorldGeneration
     public class WorldGenerationPreset : IExposable
     {
 		public Dictionary<string, int> factionCounts;
-		public Dictionary<string, float> biomeCommonalities;
-		public Dictionary<string, float> biomeScoreOffsets;
+		public Dictionary<string, int> biomeCommonalities;
+		public Dictionary<string, int> biomeScoreOffsets;
 		public string seedString;
 		public float planetCoverage;
 		public OverallRainfall rainfall;
@@ -27,6 +27,7 @@ namespace RGExpandedWorldGeneration
 		public float factionRoadDensity;
 		public float mountainDensity;
 		public float seaLevel;
+		public AxialTilt axialTilt;
 		public void Init()
         {
 			seedString = GenText.RandomSeedString();
@@ -34,6 +35,7 @@ namespace RGExpandedWorldGeneration
 			rainfall = OverallRainfall.Normal;
 			temperature = OverallTemperature.Normal;
 			population = OverallPopulation.Normal;
+			axialTilt = AxialTilt.Normal;
 			ResetFactionCounts();
 			Reset();
 		}
@@ -45,6 +47,7 @@ namespace RGExpandedWorldGeneration
 			factionRoadDensity = 1f;
 			mountainDensity = 1f;
 			seaLevel = 1f;
+			axialTilt = AxialTilt.Normal;
 			ResetBiomeCommonalities();
 			ResetBiomeScoreOffsets();
 		}
@@ -53,7 +56,7 @@ namespace RGExpandedWorldGeneration
 		{
 			if (seedString != other.seedString || planetCoverage != other.planetCoverage || rainfall != other.rainfall || temperature != other.temperature
 				|| population != other.population || riverDensity != other.riverDensity || ancientRoadDensity != other.ancientRoadDensity
-				|| factionRoadDensity != other.factionRoadDensity || mountainDensity != other.mountainDensity || seaLevel != other.seaLevel)
+				|| factionRoadDensity != other.factionRoadDensity || mountainDensity != other.mountainDensity || seaLevel != other.seaLevel || axialTilt != other.axialTilt)
             {
 				return true;
             }
@@ -89,6 +92,7 @@ namespace RGExpandedWorldGeneration
 			copy.factionRoadDensity = this.factionRoadDensity;
 			copy.mountainDensity = this.mountainDensity;
 			copy.seaLevel = this.seaLevel;
+			copy.axialTilt = this.axialTilt;
 			return copy;
 		}
 		private void ResetFactionCounts()
@@ -102,16 +106,16 @@ namespace RGExpandedWorldGeneration
 
 		public void ResetBiomeCommonalities()
 		{
-			biomeCommonalities = new Dictionary<string, float>();
+			biomeCommonalities = new Dictionary<string, int>();
 			foreach (BiomeDef biomeDef in DefDatabase<BiomeDef>.AllDefs)
 			{
-				biomeCommonalities.Add(biomeDef.defName, 1f);
+				biomeCommonalities.Add(biomeDef.defName, 10);
 			}
 		}
 
 		public void ResetBiomeScoreOffsets()
 		{
-			biomeScoreOffsets = new Dictionary<string, float>();
+			biomeScoreOffsets = new Dictionary<string, int>();
 			foreach (BiomeDef biomeDef in DefDatabase<BiomeDef>.AllDefs)
 			{
 				biomeScoreOffsets.Add(biomeDef.defName, 0);
@@ -132,6 +136,7 @@ namespace RGExpandedWorldGeneration
 			Scribe_Values.Look(ref factionRoadDensity, "settlementRoadDensity");
 			Scribe_Values.Look(ref mountainDensity, "mountainDensity");
 			Scribe_Values.Look(ref seaLevel, "seaLevel");
+			Scribe_Values.Look(ref axialTilt, "axialTilt");
 		}
 	}
 }

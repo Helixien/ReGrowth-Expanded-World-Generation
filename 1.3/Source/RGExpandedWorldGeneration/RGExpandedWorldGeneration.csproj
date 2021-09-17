@@ -41,7 +41,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Dialog_PresetList.cs" />
     <Compile Include="RGExpandedWorldGenerationSettings.cs" />
+    <Compile Include="AxialTiltUtility.cs" />
+    <Compile Include="WorldComponent_WorldGenerator.cs" />
     <Compile Include="Utils.cs" />
     <Compile Include="WorldGenerationPreset.cs" />
     <Compile Include="HarmonyPatches.cs" />

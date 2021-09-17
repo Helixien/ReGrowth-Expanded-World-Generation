@@ -11,4 +11,9 @@
 	<RG.GeneratePreview>Generate preview</RG.GeneratePreview>
 	<RG.Commonality>Multiplier: </RG.Commonality>
 	<RG.ScoreOffset>Offset: </RG.ScoreOffset>
+	<RG.AxialTilt>Axial tilt</RG.AxialTilt>
+	<RG.Small>Small</RG.Small>
+	<RG.Large>Large</RG.Large>
+	<RG.SavePreset>Save Preset</RG.SavePreset>
+	<RG.LoadPreset>Load Preset</RG.LoadPreset>
 </LanguageData>
