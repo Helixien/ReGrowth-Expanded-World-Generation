@@ -9,5 +9,6 @@
 	<RG.Biomes>Biomes</RG.Biomes>
 	<RG.BiomeCommonalities>Biome commonalities</RG.BiomeCommonalities>
 	<RG.GeneratePreview>Generate preview</RG.GeneratePreview>
-	
+	<RG.Commonality>Multiplier: </RG.Commonality>
+	<RG.ScoreOffset>Offset: </RG.ScoreOffset>
 </LanguageData>

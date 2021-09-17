@@ -84,10 +84,11 @@ namespace RGExpandedWorldGeneration
 
         private static float GetScoreAdjusted(BiomeDef biomeDef, float score)
         {
+            score += Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
             var biomeCommonalityOverride = Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
             if (biomeCommonalityOverride == 0)
             {
-                return -999;
+                return -999 + Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
             }
             var adjustedScore = score < 0 ? score / biomeCommonalityOverride : score * biomeCommonalityOverride;
             return adjustedScore;
@@ -253,6 +254,19 @@ namespace RGExpandedWorldGeneration
         }
     }
 
+    [HarmonyPatch(typeof(Page_CreateWorldParams), "Reset")]
+    public static class Reset_Patch
+    {
+        public static void Postfix()
+        {
+            if (Page_CreateWorldParams_Patch.tmpWorldGenerationPreset != null)
+            {
+                Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.Reset();
+            }
+            Page_CreateWorldParams_Patch.slidersInit = false;
+        }
+    }
+
     [HarmonyPatch(typeof(Page_CreateWorldParams), "DoWindowContents")]
     public static class Page_CreateWorldParams_Patch
     {
@@ -269,8 +283,6 @@ namespace RGExpandedWorldGeneration
         public static bool dirty;
 
         public static Texture2D worldPreview;
-
-        private static bool biomeCoverageInit;
 
         private static Stopwatch total = new Stopwatch();
 
@@ -308,6 +320,7 @@ namespace RGExpandedWorldGeneration
             DoWorldPreviewArea(__instance);
         }
 
+        public static bool slidersInit;
         private static void DoGui(Page_CreateWorldParams window, ref float num, float width2)
         {
             isActive = true;
@@ -319,16 +332,36 @@ namespace RGExpandedWorldGeneration
 
             var labelRect = new Rect(0f, num + 104, 80, 30);
             Widgets.Label(labelRect, "RG.Biomes".Translate());
-            var outRect = new Rect(labelRect.x, labelRect.yMax, width2 + 195, DoWindowContents_Patch.LowerWidgetHeight - 50);
-            Rect viewRect = new Rect(outRect.x, outRect.y, outRect.width - 16f, (DefDatabase<BiomeDef>.DefCount * 40) + 10);
+            var outRect = new Rect(labelRect.x, labelRect.yMax - 3, width2 + 195, DoWindowContents_Patch.LowerWidgetHeight - 50);
+            Rect viewRect = new Rect(outRect.x, outRect.y, outRect.width - 16f, (DefDatabase<BiomeDef>.DefCount * 90) + 10);
+            Rect rect3 = new Rect(outRect.xMax - 200f - 16f, labelRect.y, 200f, Text.LineHeight);
+            if (!tmpWorldGenerationPreset.biomeCommonalities.All(x => x.Value == 1f) || !tmpWorldGenerationPreset.biomeScoreOffsets.All(y => y.Value == 0f))
+            {
+                if (slidersInit || updatePreviewCounter < 30)
+                {
+                    if (Widgets.ButtonText(rect3, "ResetFactionsToDefault".Translate()))
+                    {
+                        tmpWorldGenerationPreset.ResetBiomeCommonalities();
+                        tmpWorldGenerationPreset.ResetBiomeScoreOffsets();
+                        slidersInit = false;
+                    }
+                    else
+                    {
+                        slidersInit = true;
+                    }
+                }
+            }
+            else
+            {
+                slidersInit = false;
+            }
+
             Widgets.DrawBoxSolid(new Rect(outRect.x, outRect.y, outRect.width - 16f, outRect.height), BackgroundColor);
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
             num = outRect.y + 15;
             foreach (var biomeDef in DefDatabase<BiomeDef>.AllDefs.OrderBy(x => x.label ?? x.defName))
             {
-                var value = tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
-                DoSliderBiomeCommonality(10, ref num, width2, biomeDef.label?.CapitalizeFirst() ?? biomeDef.defName, ref value);
-                tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] = value;
+                DoBiomeSliders(biomeDef, 10, ref num, biomeDef.label?.CapitalizeFirst() ?? biomeDef.defName);
             }
             Widgets.EndScrollView();
 
@@ -340,56 +373,22 @@ namespace RGExpandedWorldGeneration
             {
                 RGExpandedWorldGenerationSettings.curWorldGenerationPreset = tmpWorldGenerationPreset.MakeCopy();
                 updatePreviewCounter = 60;
+                if (thread != null)
+                {
+                    thread.Abort();
+                    thread = null;
+                }
             }
             if (thread is null)
             {
-                updatePreviewCounter--;
-                if (updatePreviewCounter == 1)
+                if (updatePreviewCounter == 0)
                 {
                     StartRefreshWorldPreview(window);
                 }
             }
-        }
-        private static void DoBiomeShit(Page_CreateWorldParams window)
-        {
-            if (!biomeCoverageInit)
+            if (updatePreviewCounter > -2)
             {
-                biomeCoverageInit = true;
-                total.Restart();
-
-                Rand.PushState();
-                int seed = (Rand.Seed = WorldGenerator.GetSeedFromSeedString(window.seedString));
-                var worldGenStep_Terrain = new WorldGenStep_Terrain();
-                Current.CreatingWorld = new World();
-                Current.CreatingWorld.info.seedString = window.seedString;
-                Current.CreatingWorld.info.planetCoverage = window.planetCoverage;
-                Current.CreatingWorld.info.overallRainfall = window.rainfall;
-                Current.CreatingWorld.info.overallTemperature = window.temperature;
-                Current.CreatingWorld.info.overallPopulation = window.population;
-                Current.CreatingWorld.info.name = NameGenerator.GenerateName(RulePackDefOf.NamerWorld);
-                WorldGenerator.tmpGenSteps.Clear();
-                WorldGenerator.tmpGenSteps.AddRange(WorldGenerator.GenStepsInOrder);
-                for (int i = 0; i < WorldGenerator.tmpGenSteps.Count; i++)
-                {
-                    try
-                    {
-                        Rand.Seed = Gen.HashCombineInt(seed, WorldGenerator.GetSeedPart(WorldGenerator.tmpGenSteps, i));
-                        if (worldGenStepDefs.Contains(WorldGenerator.tmpGenSteps[i]))
-                        {
-                            if (WorldGenerator.tmpGenSteps[i] == DefDatabase<WorldGenStepDef>.GetNamed("Terrain"))
-                            {
-                                WorldGenerator.tmpGenSteps[i].worldGenStep.GenerateFresh(window.seedString);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error("Error in WorldGenStep: " + ex);
-                    }
-                }
-                Rand.PopState();
-                DeepProfiler.End();
-                Current.CreatingWorld = null;
+                updatePreviewCounter--;
             }
         }
         private static void DoWorldPreviewArea(Page_CreateWorldParams window)
@@ -413,19 +412,17 @@ namespace RGExpandedWorldGeneration
             int numAttempt = 0;
             if (thread is null && Find.World != null && Find.World.info.name != "DefaultWorldName" || worldPreview != null)
             {
-                if (thread is null && dirty)
+                if (dirty)
                 {
-                    while (numAttempt < 10)
+                    while (numAttempt < 5)
                     {
                         worldPreview = GetWorldCameraPreview(Find.WorldCamera, WorldCameraHeight, WorldCameraWidth);
                         if (IsBlack(worldPreview))
                         {
                             numAttempt++;
-                            Log.Message("Is black, fixing: " + numAttempt);
                         }
                         else
                         {
-                            Log.Message("NOt black, fixed: " + numAttempt);
                             dirty = false;
                             break;
                         }
@@ -446,14 +443,12 @@ namespace RGExpandedWorldGeneration
         private static bool IsBlack(Texture2D texture)
         {
             var pixel = texture.GetPixel(texture.width / 2, texture.height / 2);
-            Log.Message("pixel: " + pixel);
             return pixel.r <= 0 && pixel.g <= 0 && pixel.b <= 0;
         }
         private static void StartRefreshWorldPreview(Page_CreateWorldParams window)
         {
             dirty = false;
             updatePreviewCounter = -1;
-            Log.Message("StartRefreshWorldPreview: " + thread);
             if (thread != null && thread.IsAlive)
             {
                 thread.Abort();
@@ -507,6 +502,7 @@ namespace RGExpandedWorldGeneration
         };
         public static void GenerateWorld(float planetCoverage, string seedString, OverallRainfall overallRainfall, OverallTemperature overallTemperature, OverallPopulation population, Dictionary<FactionDef, int> factionCounts = null)
         {
+
             Rand.PushState();
             int seed = (Rand.Seed = WorldGenerator.GetSeedFromSeedString(seedString));
             Find.GameInitData.ResetWorldRelatedMapInitData();
@@ -537,14 +533,35 @@ namespace RGExpandedWorldGeneration
                     }
                     catch (Exception ex)
                     {
-                        Log.Error("Error in WorldGenStep: " + ex);
+                        if (!(ex is ThreadAbortException))
+                        {
+                            Log.Error("Error in WorldGenStep: " + ex);
+                        }
+                        else
+                        {
+                            Rand.PopState();
+                            Current.CreatingWorld = null;
+                            return;
+                        }
                     }
                 }
                 threadedWorld = Current.CreatingWorld;
-
                 Current.Game.World = threadedWorld;
                 Find.World.features = new WorldFeatures();
                 MemoryUtility.UnloadUnusedUnityAssets();
+            }
+            catch (Exception ex)
+            {
+                if (!(ex is ThreadAbortException))
+                {
+                    Log.Error("Error: " + ex);
+                }
+                else
+                {
+                    Rand.PopState();
+                    Current.CreatingWorld = null;
+                    return;
+                }
             }
             finally
             {
@@ -604,15 +621,28 @@ namespace RGExpandedWorldGeneration
             var labelRect = new Rect(x, num, 200f, 30f);
             Widgets.Label(labelRect, label);
             Rect slider = new Rect(labelRect.xMax, num, width2, 30f);
-            field = Widgets.HorizontalSlider(slider, field, 0f, 2f, false, (field * 100).ToStringDecimalIfSmall() + "%");
+            field = Widgets.HorizontalSlider(slider, (int)(field * 3f), 0, 6, middleAlignment: true, 
+                "PlanetRainfall_Normal".Translate(), "PlanetRainfall_Low".Translate(), "PlanetRainfall_High".Translate(), 1f) / 3f;
+
         }
-        private static void DoSliderBiomeCommonality(float x, ref float num, float width2, string label, ref float field)
+        private static void DoBiomeSliders(BiomeDef biomeDef, float x, ref float num, string label)
         {
             var labelRect = new Rect(x, num - 10, 200f, 30f);
             Widgets.Label(labelRect, label);
-            Rect slider = new Rect(labelRect.x, num, width2 + 160f, 30f);
-            field = Widgets.HorizontalSlider(slider, field, 0f, 2f, false, (field * 100).ToStringDecimalIfSmall() + "%");
-            num += 40f;
+            num += 10;
+            Rect biomeCommonalityLabel = new Rect(labelRect.x, num + 5, 70, 30);
+            Widgets.Label(biomeCommonalityLabel, "RG.Commonality".Translate());
+            Rect biomeCommonalitySlider = new Rect(biomeCommonalityLabel.xMax + 5, num, 340, 30f);
+            var value = tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName];
+            tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] = Widgets.HorizontalSlider(biomeCommonalitySlider, value, 0f, 2f, false, (value * 100).ToStringDecimalIfSmall() + "%");
+            num += 30f;
+
+            Rect biomeOffsetLabel = new Rect(labelRect.x, num + 5, 70, 30);
+            Widgets.Label(biomeOffsetLabel, "RG.ScoreOffset".Translate());
+            Rect scoreOffsetSlider = new Rect(biomeOffsetLabel.xMax + 5, biomeCommonalitySlider.yMax, 340, 30f);
+            var value2 = tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
+            tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName] = Widgets.HorizontalSlider(scoreOffsetSlider, value2, -100f, 100f, false, value2.ToStringDecimalIfSmall());
+            num += 50f;
         }
     }
 }

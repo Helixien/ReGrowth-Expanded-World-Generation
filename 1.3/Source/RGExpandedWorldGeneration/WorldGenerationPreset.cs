@@ -16,6 +16,7 @@ namespace RGExpandedWorldGeneration
     {
 		public Dictionary<string, int> factionCounts;
 		public Dictionary<string, float> biomeCommonalities;
+		public Dictionary<string, float> biomeScoreOffsets;
 		public string seedString;
 		public float planetCoverage;
 		public OverallRainfall rainfall;
@@ -33,13 +34,19 @@ namespace RGExpandedWorldGeneration
 			rainfall = OverallRainfall.Normal;
 			temperature = OverallTemperature.Normal;
 			population = OverallPopulation.Normal;
+			ResetFactionCounts();
+			Reset();
+		}
+
+		public void Reset()
+        {
 			riverDensity = 1f;
 			ancientRoadDensity = 1f;
 			factionRoadDensity = 1f;
 			mountainDensity = 1f;
 			seaLevel = 1f;
-			ResetFactionCounts();
 			ResetBiomeCommonalities();
+			ResetBiomeScoreOffsets();
 		}
 
 		public bool IsDifferentFrom(WorldGenerationPreset other)
@@ -59,6 +66,10 @@ namespace RGExpandedWorldGeneration
 			{
 				return true;
             }
+			if (biomeScoreOffsets.Count != other.biomeScoreOffsets.Count || !biomeScoreOffsets.ContentEquals(other.biomeScoreOffsets))
+			{
+				return true;
+			}
 			return false;
 		}
 
@@ -67,6 +78,7 @@ namespace RGExpandedWorldGeneration
 			var copy = new WorldGenerationPreset();
 			copy.factionCounts = this.factionCounts.ToDictionary(x => x.Key, y => y.Value);
 			copy.biomeCommonalities = this.biomeCommonalities.ToDictionary(x => x.Key, y => y.Value);
+			copy.biomeScoreOffsets = this.biomeScoreOffsets.ToDictionary(x => x.Key, y => y.Value);
 			copy.seedString = this.seedString;
 			copy.planetCoverage = this.planetCoverage;
 			copy.rainfall = this.rainfall;
@@ -88,7 +100,7 @@ namespace RGExpandedWorldGeneration
 			}
 		}
 
-		private void ResetBiomeCommonalities()
+		public void ResetBiomeCommonalities()
 		{
 			biomeCommonalities = new Dictionary<string, float>();
 			foreach (BiomeDef biomeDef in DefDatabase<BiomeDef>.AllDefs)
@@ -96,10 +108,20 @@ namespace RGExpandedWorldGeneration
 				biomeCommonalities.Add(biomeDef.defName, 1f);
 			}
 		}
+
+		public void ResetBiomeScoreOffsets()
+		{
+			biomeScoreOffsets = new Dictionary<string, float>();
+			foreach (BiomeDef biomeDef in DefDatabase<BiomeDef>.AllDefs)
+			{
+				biomeScoreOffsets.Add(biomeDef.defName, 0);
+			}
+		}
 		public void ExposeData()
         {
 			Scribe_Collections.Look(ref factionCounts, "factionCounts", LookMode.Value, LookMode.Value);
 			Scribe_Collections.Look(ref biomeCommonalities, "biomeCommonalities", LookMode.Value, LookMode.Value);
+			Scribe_Collections.Look(ref biomeScoreOffsets, "biomeScoreOffsets", LookMode.Value, LookMode.Value);
 			Scribe_Values.Look(ref seedString, "seedString");
 			Scribe_Values.Look(ref planetCoverage, "planetCoverage");
 			Scribe_Values.Look(ref rainfall, "rainfall");
