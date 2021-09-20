@@ -15,7 +15,6 @@ using Verse;
 using Verse.Noise;
 using Verse.Profile;
 using Verse.Sound;
-using static RimWorld.Planet.WorldGenStep_Roads;
 
 namespace RGExpandedWorldGeneration
 {
@@ -25,195 +24,6 @@ namespace RGExpandedWorldGeneration
         static HarmonyInit()
         {
             new Harmony("RGExpandedWorldGeneration.Mod").PatchAll();
-        }
-    }
-    [HarmonyPatch(typeof(WorldGenStep_Terrain), "SetupElevationNoise")]
-    public static class SetupElevationNoise_Patch
-    {
-        public static void Prefix(ref FloatRange ___ElevationRange)
-        {
-            ___ElevationRange = new FloatRange(-500f * Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.seaLevel, 5000f);
-        }
-    }
-
-    [HarmonyPatch(typeof(WorldGenStep_Terrain), "GenerateTileFor")]
-    public static class GenerateTileFor_Patch
-    {
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
-            var methodToHook = AccessTools.Method(typeof(ModuleBase), "GetValue", new Type[] { typeof(Vector3) });
-            var noiseMountainLinesField = AccessTools.Field(typeof(WorldGenStep_Terrain), "noiseMountainLines");
-            var codes = instructions.ToList();
-            for (var i = 0; i < codes.Count; i++)
-            {
-                var code = codes[i];
-                yield return code;
-                if (i > 2 && code.Calls(methodToHook) && codes[i - 2].LoadsField(noiseMountainLinesField))
-                {
-                    yield return new CodeInstruction(OpCodes.Ldsfld, AccessTools.Field(typeof(Page_CreateWorldParams_Patch), nameof(Page_CreateWorldParams_Patch.tmpWorldGenerationPreset)));
-                    yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(WorldGenerationPreset), nameof(WorldGenerationPreset.mountainDensity)));
-                    yield return new CodeInstruction(OpCodes.Div);
-                }
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(WorldGenStep_Terrain), "BiomeFrom")]
-    public static class BiomeFrom_Patch
-    {
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
-            var methodToHook = AccessTools.Method(typeof(BiomeWorker), "GetScore");
-            var getScoreAdjustedMethod = AccessTools.Method(typeof(BiomeFrom_Patch), "GetScoreAdjusted");
-            var codes = instructions.ToList();
-            bool found = false;
-            for (var i = 0; i < codes.Count; i++)
-            {
-                var code = codes[i];
-                yield return code;
-                if (!found && codes[i].opcode == OpCodes.Stloc_S && codes[i].operand is LocalBuilder lb && lb.LocalIndex == 5 && codes[i - 1].Calls(methodToHook))
-                {
-                    yield return new CodeInstruction(OpCodes.Ldloc_S, 4);
-                    yield return new CodeInstruction(OpCodes.Ldloc_S, 5);
-                    yield return new CodeInstruction(OpCodes.Call, getScoreAdjustedMethod);
-                    yield return new CodeInstruction(OpCodes.Stloc_S, 5);
-                    found = true;
-                }
-            }
-        }
-
-        private static float GetScoreAdjusted(BiomeDef biomeDef, float score)
-        {
-            score += Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
-            var biomeCommonalityOverride = Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] / 10f;
-            if (biomeCommonalityOverride == 0)
-            {
-                return -999 + Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
-            }
-            var adjustedScore = score < 0 ? score / biomeCommonalityOverride : score * biomeCommonalityOverride;
-            return adjustedScore;
-        }
-    }
-
-    [HarmonyPatch]
-    static class WorldGenStep_Roads_GenerateRoadEndpoints_Patch
-    {
-        static MethodBase TargetMethod()
-        {
-            foreach (var nestType in typeof(WorldGenStep_Roads).GetNestedTypes(AccessTools.all))
-            {
-                foreach (var meth in AccessTools.GetDeclaredMethods(nestType))
-                {
-                    if (meth.Name.Contains("GenerateRoadEndpoints") && meth.ReturnType == typeof(bool))
-                    {
-                        return meth;
-                    }
-                }
-            }
-            return null;
-        }
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
-            var codes = instructions.ToList();
-            bool found = false;
-            for (var i = 0; i < codes.Count; i++)
-            {
-                var code = codes[i];
-                yield return code;
-                if (!found && code.OperandIs(0.05f))
-                {
-                    yield return new CodeInstruction(OpCodes.Ldsfld, AccessTools.Field(typeof(Page_CreateWorldParams_Patch), nameof(Page_CreateWorldParams_Patch.tmpWorldGenerationPreset)));
-                    yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(WorldGenerationPreset), nameof(WorldGenerationPreset.factionRoadDensity)));
-                    yield return new CodeInstruction(OpCodes.Div);
-                    found = true;
-                }
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(WorldGenStep_Roads), "GenerateRoadEndpoints")]
-    public static class GenerateRoadEndpoints_Patch
-    {
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
-            var methodToHook = AccessTools.Method(typeof(FloatRange), "get_RandomInRange");
-            var codes = instructions.ToList();
-            bool found = false;
-            for (var i = 0; i < codes.Count; i++)
-            {
-                var code = codes[i];
-                yield return code;
-                if (!found && code.Calls(methodToHook))
-                {
-                    yield return new CodeInstruction(OpCodes.Ldsfld, AccessTools.Field(typeof(Page_CreateWorldParams_Patch), nameof(Page_CreateWorldParams_Patch.tmpWorldGenerationPreset)));
-                    yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(WorldGenerationPreset), nameof(WorldGenerationPreset.factionRoadDensity)));
-                    yield return new CodeInstruction(OpCodes.Mul);
-                    found = true;
-                }
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(WorldGenStep_AncientSites), "GenerateAncientSites")]
-    public static class GenerateAncientSites_Patch
-    {
-        private static void Prefix(WorldGenStep_AncientSites __instance, out FloatRange __state)
-        {
-            __state = __instance.ancientSitesPer100kTiles;
-            __instance.ancientSitesPer100kTiles *= Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.ancientRoadDensity;
-        }
-
-        private static void Postfix(WorldGenStep_AncientSites __instance, FloatRange __state)
-        {
-            __instance.ancientSitesPer100kTiles = __state;
-        }
-    }
-
-    [HarmonyPatch(typeof(WorldGenStep_Rivers), "GenerateRivers")]
-    public static class GenerateRivers_Patch
-    {
-        public struct RiverData
-        {
-            public float spawnChance;
-            public float[] branchChance;
-        }
-
-        [HarmonyPriority(Priority.First)]
-        private static void Prefix(out Dictionary<RiverDef, RiverData> __state)
-        {
-            __state = new Dictionary<RiverDef, RiverData>();
-            foreach (var def in DefDatabase<RiverDef>.AllDefs)
-            {
-                var riverData = new RiverData();
-                __state[def] = riverData;
-                riverData.spawnChance = def.spawnChance;
-                def.spawnChance *= Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.riverDensity;
-                if (def.branches != null)
-                {
-                    riverData.branchChance = new float[def.branches.Count];
-                    for (var i = 0; i < def.branches.Count; i++)
-                    {
-                        riverData.branchChance[i] = def.branches[i].chance;
-                        def.branches[i].chance *= Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.riverDensity;
-                    }
-                }
-            }
-        }
-
-        private static void Postfix(Dictionary<RiverDef, RiverData> __state)
-        {
-            __state = new Dictionary<RiverDef, RiverData>();
-            foreach (var data in __state)
-            {
-                data.Key.spawnChance = data.Value.spawnChance;
-                if (data.Key.branches != null)
-                {
-                    for (var i = 0; i < data.Key.branches.Count; i++)
-                    {
-                        data.Key.branches[i].chance = data.Value.branchChance[i];
-                    }
-                }
-            }
         }
     }
 
@@ -231,9 +41,9 @@ namespace RGExpandedWorldGeneration
     [HarmonyPatch(typeof(WorldLayer), "RegenerateNow")]
     public static class RegenerateNow_Patch
     {
-        public static bool Prefix(WorldLayer __instance)
+        public static bool Prefix()
         {
-            if (Page_CreateWorldParams_Patch.dirty && __instance is WorldLayer_Glow && Find.WindowStack.WindowOfType<Page_CreateWorldParams>() != null)
+            if (Page_CreateWorldParams_Patch.dirty && Find.WindowStack.WindowOfType<Page_CreateWorldParams>() != null)
             {
                 return false;
             }
@@ -246,7 +56,7 @@ namespace RGExpandedWorldGeneration
     {
         public static bool Prefix()
         {
-            if (Page_CreateWorldParams_Patch.thread != null)
+            if (Page_CreateWorldParams_Patch.generatingWorld)
             {
                 return false;
             }
@@ -257,6 +67,7 @@ namespace RGExpandedWorldGeneration
     [HarmonyPatch(typeof(GenTemperature), "SeasonalShiftAmplitudeAt", null)]
     public static class GenTemperature_SeasonalShiftAmplitudeAt
     {
+        [HarmonyPriority(int.MaxValue)]
         public static void Postfix(int tile, ref float __result)
         {
             if (Find.WorldGrid.LongLatOf(tile).y >= 0f)
@@ -290,6 +101,7 @@ namespace RGExpandedWorldGeneration
                 Page_CreateWorldParams_Patch.thread.Abort();
                 Page_CreateWorldParams_Patch.thread = null;
             }
+            Page_CreateWorldParams_Patch.generatingWorld = false;
         }
     }
 
@@ -433,13 +245,18 @@ namespace RGExpandedWorldGeneration
             DoSlider(0, ref num, width2, "RG.MountainDensity".Translate(), ref tmpWorldGenerationPreset.mountainDensity, "None".Translate());
             DoSlider(0, ref num, width2, "RG.SeaLevel".Translate(), ref tmpWorldGenerationPreset.seaLevel, "None".Translate());
 
-            num += 40f;
-            var labelRect = new Rect(0, num, 200f, 30f);
-            Widgets.Label(labelRect, "RG.AxialTilt".Translate());
-            Rect slider = new Rect(labelRect.xMax, num, width2, 30f);
-            tmpWorldGenerationPreset.axialTilt = (AxialTilt)Mathf.RoundToInt(Widgets.HorizontalSlider(slider, 
-                (float)tmpWorldGenerationPreset.axialTilt, 0f, AxialTiltUtility.EnumValuesCount - 1, middleAlignment: true, "PlanetRainfall_Normal".Translate(), "PlanetRainfall_Low".Translate(), "PlanetRainfall_High".Translate(), 1f));
-
+            Rect labelRect;
+            Rect slider;
+            if (!ModCompat.MyLittlePlanetActive)
+            {
+                num += 40f;
+                labelRect = new Rect(0, num, 200f, 30f);
+                slider = new Rect(labelRect.xMax, num, width2, 30f);
+                Widgets.Label(labelRect, "RG.AxialTilt".Translate());
+                tmpWorldGenerationPreset.axialTilt = (AxialTilt)Mathf.RoundToInt(Widgets.HorizontalSlider(slider,
+                    (float)tmpWorldGenerationPreset.axialTilt, 0f, AxialTiltUtility.EnumValuesCount - 1, middleAlignment: true,
+                    "PlanetRainfall_Normal".Translate(), "PlanetRainfall_Low".Translate(), "PlanetRainfall_High".Translate(), 1f));
+            }
 
             labelRect = new Rect(0f, num + 64, 80, 30);
             Widgets.Label(labelRect, "RG.Biomes".Translate());
@@ -540,6 +357,19 @@ namespace RGExpandedWorldGeneration
             float numY = previewAreaRect.yMax - 40;
             DoSlider(previewAreaRect.x - 55, ref numY, 256, "RG.AncientRoadDensity".Translate(), ref tmpWorldGenerationPreset.ancientRoadDensity, "None".Translate());
             DoSlider(previewAreaRect.x - 55, ref numY, 256, "RG.FactionRoadDensity".Translate(), ref tmpWorldGenerationPreset.factionRoadDensity, "None".Translate());
+
+            Rect labelRect;
+            Rect slider;
+            if (ModCompat.MyLittlePlanetActive)
+            {
+                numY += 40;
+                labelRect = new Rect(previewAreaRect.x - 55, numY, 200f, 30f);
+                slider = new Rect(labelRect.xMax, numY, 256, 30f);
+                Widgets.Label(labelRect, "RG.AxialTilt".Translate());
+                tmpWorldGenerationPreset.axialTilt = (AxialTilt)Mathf.RoundToInt(Widgets.HorizontalSlider(slider,
+                    (float)tmpWorldGenerationPreset.axialTilt, 0f, AxialTiltUtility.EnumValuesCount - 1, middleAlignment: true,
+                    "PlanetRainfall_Normal".Translate(), "PlanetRainfall_Low".Translate(), "PlanetRainfall_High".Translate(), 1f));
+            }
         }
 
         public static void ApplyChanges(Page_CreateWorldParams window)
@@ -570,6 +400,7 @@ namespace RGExpandedWorldGeneration
             if (thread != null && thread.IsAlive)
             {
                 thread.Abort();
+                generatingWorld = false;
             }
             thread = new Thread(delegate ()
             {
@@ -619,6 +450,7 @@ namespace RGExpandedWorldGeneration
                 threadedWorld = null;
                 thread = null;
                 dirty = true;
+                generatingWorld = false;
             }
         }
 
@@ -632,9 +464,11 @@ namespace RGExpandedWorldGeneration
             DefDatabase<WorldGenStepDef>.GetNamed("AncientRoads"),
             DefDatabase<WorldGenStepDef>.GetNamed("Roads")
         };
+
+        public static bool generatingWorld;
         public static void GenerateWorld(float planetCoverage, string seedString, OverallRainfall overallRainfall, OverallTemperature overallTemperature, OverallPopulation population, Dictionary<FactionDef, int> factionCounts = null)
         {
-
+            generatingWorld = true;
             Rand.PushState();
             int seed = (Rand.Seed = WorldGenerator.GetSeedFromSeedString(seedString));
             Find.GameInitData.ResetWorldRelatedMapInitData();
@@ -673,6 +507,7 @@ namespace RGExpandedWorldGeneration
                         {
                             Rand.PopState();
                             Current.CreatingWorld = null;
+                            generatingWorld = false;
                             return;
                         }
                     }
@@ -690,14 +525,22 @@ namespace RGExpandedWorldGeneration
                 }
                 else
                 {
-                    Rand.PopState();
+                    if (Rand.stateStack.Any())
+                    {
+                        Rand.PopState();
+                    }
+                    generatingWorld = false;
                     Current.CreatingWorld = null;
                     return;
                 }
             }
             finally
             {
-                Rand.PopState();
+                if (Rand.stateStack.Any())
+                {
+                    Rand.PopState();
+                }
+                generatingWorld = false;
                 Current.CreatingWorld = null;
             }
         }
@@ -790,7 +633,7 @@ namespace RGExpandedWorldGeneration
             }
             Widgets.Label(biomeOffsetLabel, "RG.ScoreOffset".Translate());
             Rect scoreOffsetSlider = new Rect(biomeOffsetLabel.xMax + 5, biomeCommonalitySlider.yMax, 340, 30f);
-            tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName] = (int)Widgets.HorizontalSlider(scoreOffsetSlider, value2, -100, 100, false, value2.ToString());
+            tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName] = (int)Widgets.HorizontalSlider(scoreOffsetSlider, value2, -99, 99, false, value2.ToString());
             GUI.color = Color.white;
             num += 50f;
         }

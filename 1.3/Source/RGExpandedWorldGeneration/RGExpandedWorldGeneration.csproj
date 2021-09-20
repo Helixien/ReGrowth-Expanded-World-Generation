@@ -42,12 +42,14 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Dialog_PresetList.cs" />
+    <Compile Include="Patches\ModCompatPatches.cs" />
+    <Compile Include="Patches\WorldGeneratorPatches.cs" />
     <Compile Include="RGExpandedWorldGenerationSettings.cs" />
     <Compile Include="AxialTiltUtility.cs" />
     <Compile Include="WorldComponent_WorldGenerator.cs" />
     <Compile Include="Utils.cs" />
     <Compile Include="WorldGenerationPreset.cs" />
-    <Compile Include="HarmonyPatches.cs" />
+    <Compile Include="Patches\HarmonyPatches.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
