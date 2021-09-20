@@ -577,9 +577,23 @@ namespace RGExpandedWorldGeneration
             });
             thread.Start();
         }
+
+        private static float texSpinAngle;
         private static void DrawGeneratePreviewButton(Page_CreateWorldParams window, Rect generateButtonRect)
         {
-            GUI.DrawTexture(generateButtonRect, GeneratePreview);
+            if (thread != null)
+            {
+                if (texSpinAngle > 360f)
+                {
+                    texSpinAngle -= 360f;
+                }
+                if (texSpinAngle < 0)
+                {
+                    texSpinAngle += 360f;
+                }
+                texSpinAngle += 3;
+            }
+            Widgets.DrawTextureRotated(generateButtonRect, GeneratePreview, texSpinAngle);
             if (Mouse.IsOver(generateButtonRect))
             {
                 Widgets.DrawHighlightIfMouseover(generateButtonRect);
