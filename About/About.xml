@@ -7,8 +7,10 @@
 		<li>1.3</li>
 	</supportedVersions>
 	<url/>
-	<packageId>ReGrowth.BOTR.ExpandedWorldGeneration</packageId>
-	<description>.</description>
+	<packageId>ReGrowth.BOTR.EWG</packageId>
+	<description>Mod Version: 0.9
+	
+	Check the workshop page for information.</description>
 	<modDependencies>
 		<li>
 			<packageId>brrainz.harmony</packageId>
