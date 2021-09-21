@@ -67,6 +67,11 @@ namespace RGExpandedWorldGeneration
     [HarmonyPatch(typeof(GenTemperature), "SeasonalShiftAmplitudeAt", null)]
     public static class GenTemperature_SeasonalShiftAmplitudeAt
     {
+        public static bool Prefix()
+        {
+            return false;
+        }
+
         [HarmonyPriority(int.MaxValue)]
         public static void Postfix(int tile, ref float __result)
         {
@@ -418,13 +423,16 @@ namespace RGExpandedWorldGeneration
                 {
                     texSpinAngle -= 360f;
                 }
-                if (texSpinAngle < 0)
-                {
-                    texSpinAngle += 360f;
-                }
                 texSpinAngle += 3;
             }
-            Widgets.DrawTextureRotated(generateButtonRect, GeneratePreview, texSpinAngle);
+            if (Prefs.UIScale != 1f)
+            {
+                GUI.DrawTexture(generateButtonRect, GeneratePreview);
+            }
+            else
+            {
+                Widgets.DrawTextureRotated(generateButtonRect, GeneratePreview, texSpinAngle);
+            }
             if (Mouse.IsOver(generateButtonRect))
             {
                 Widgets.DrawHighlightIfMouseover(generateButtonRect);
