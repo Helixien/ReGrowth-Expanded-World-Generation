@@ -455,6 +455,7 @@ namespace RGExpandedWorldGeneration
                         layer.RegenerateNow();
                     }
                 }
+                Find.World.FinalizeInit();
                 threadedWorld = null;
                 thread = null;
                 dirty = true;
