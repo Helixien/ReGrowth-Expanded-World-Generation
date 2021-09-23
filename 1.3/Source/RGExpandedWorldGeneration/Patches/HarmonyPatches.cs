@@ -455,7 +455,11 @@ namespace RGExpandedWorldGeneration
                         layer.RegenerateNow();
                     }
                 }
-                Find.World.FinalizeInit();
+                var comps = Find.World.components.Where(x => x.GetType().Name == "TacticalGroups");
+                foreach (var comp in comps)
+                {
+                    comp.FinalizeInit();
+                }
                 threadedWorld = null;
                 thread = null;
                 dirty = true;
