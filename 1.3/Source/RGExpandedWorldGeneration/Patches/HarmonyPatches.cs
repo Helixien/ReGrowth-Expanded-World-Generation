@@ -244,7 +244,6 @@ namespace RGExpandedWorldGeneration
         private static void DoGui(Page_CreateWorldParams window, ref float num, float width2)
         {
             isActive = true;
-            window.absorbInputAroundWindow = false;
             UpdateCurPreset(window);
             DoSlider(0, ref num, width2, "RG.RiverDensity".Translate(), ref tmpWorldGenerationPreset.riverDensity, "None".Translate());
             DoSlider(0, ref num, width2, "RG.MountainDensity".Translate(), ref tmpWorldGenerationPreset.mountainDensity, "None".Translate());
@@ -315,6 +314,7 @@ namespace RGExpandedWorldGeneration
                 updatePreviewCounter--;
             }
         }
+
         private static void DoWorldPreviewArea(Page_CreateWorldParams window)
         {
             var previewAreaRect = new Rect(545, 10, WorldCameraHeight, WorldCameraWidth);
@@ -340,7 +340,7 @@ namespace RGExpandedWorldGeneration
                 {
                     while (numAttempt < 5)
                     {
-                        worldPreview = GetWorldCameraPreview(Find.WorldCamera, WorldCameraHeight, WorldCameraWidth);
+                        worldPreview = GetWorldCameraPreview(WorldCameraHeight, WorldCameraWidth);
                         if (IsBlack(worldPreview))
                         {
                             numAttempt++;
@@ -447,23 +447,28 @@ namespace RGExpandedWorldGeneration
             }
             if (thread != null && !thread.IsAlive && threadedWorld != null)
             {
-                for (int i = 0; i < Find.World.renderer.layers.Count; i++)
-                {
-                    var layer = Find.World.renderer.layers[i];
-                    if (layer is WorldLayer_Hills || layer is WorldLayer_Rivers || layer is WorldLayer_Roads || layer is WorldLayer_Terrain)
-                    {
-                        layer.RegenerateNow();
-                    }
-                }
-                var comps = Find.World.components.Where(x => x.GetType().Name == "TacticalGroups");
-                foreach (var comp in comps)
-                {
-                    comp.FinalizeInit();
-                }
+                InitializeWorld();
                 threadedWorld = null;
                 thread = null;
                 dirty = true;
                 generatingWorld = false;
+            }
+        }
+
+        private static void InitializeWorld()
+        {
+            for (int i = 0; i < Find.World.renderer.layers.Count; i++)
+            {
+                var layer = Find.World.renderer.layers[i];
+                if (layer is WorldLayer_Hills || layer is WorldLayer_Rivers || layer is WorldLayer_Roads || layer is WorldLayer_Terrain)
+                {
+                    layer.RegenerateNow();
+                }
+            }
+            var comps = Find.World.components.Where(x => x.GetType().Name == "TacticalGroups");
+            foreach (var comp in comps)
+            {
+                comp.FinalizeInit();
             }
         }
 
@@ -484,14 +489,27 @@ namespace RGExpandedWorldGeneration
             generatingWorld = true;
             Rand.PushState();
             int seed = (Rand.Seed = WorldGenerator.GetSeedFromSeedString(seedString));
-            Find.GameInitData.ResetWorldRelatedMapInitData();
+            var prevFaction = Find.World?.factionManager?.OfPlayer;
+            var prevProgramState = Current.ProgramState;
+            var prevGrid = Find.World?.grid;
+            Current.ProgramState = ProgramState.Entry;
+            if (prevFaction is null)
+            {
+                Find.GameInitData.ResetWorldRelatedMapInitData();
+            }
             try
             {
                 Current.CreatingWorld = new World
                 {
                     renderer = new WorldRenderer(),
                     UI = new WorldInterface(),
+                    factionManager = new FactionManager(),
                 };
+                Current.CreatingWorld.grid = prevGrid;
+                Current.CreatingWorld.factionManager.ofPlayer = prevFaction;
+                Current.CreatingWorld.dynamicDrawManager = new WorldDynamicDrawManager();
+                Current.CreatingWorld.ticksAbsCache = new ConfiguredTicksAbsAtGameStartCache();
+                Current.Game.InitData.playerFaction = prevFaction;
                 Current.CreatingWorld.info.seedString = seedString;
                 Current.CreatingWorld.info.planetCoverage = planetCoverage;
                 Current.CreatingWorld.info.overallRainfall = overallRainfall;
@@ -508,6 +526,10 @@ namespace RGExpandedWorldGeneration
                         if (worldGenStepDefs.Contains(WorldGenerator.tmpGenSteps[i]))
                         {
                             WorldGenerator.tmpGenSteps[i].worldGenStep.GenerateFresh(seedString);
+                            if (WorldGenerator.tmpGenSteps[i].defName == "Components" && prevFaction != null)
+                            {
+                                Current.CreatingWorld.factionManager.ofPlayer = prevFaction;
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -521,11 +543,13 @@ namespace RGExpandedWorldGeneration
                             Rand.PopState();
                             Current.CreatingWorld = null;
                             generatingWorld = false;
+                            Current.ProgramState = prevProgramState;
                             return;
                         }
                     }
                 }
                 threadedWorld = Current.CreatingWorld;
+                Current.Game.World = null;
                 Current.Game.World = threadedWorld;
                 Find.World.features = new WorldFeatures();
                 MemoryUtility.UnloadUnusedUnityAssets();
@@ -543,6 +567,7 @@ namespace RGExpandedWorldGeneration
                         Rand.PopState();
                     }
                     generatingWorld = false;
+                    Current.ProgramState = prevProgramState;
                     Current.CreatingWorld = null;
                     return;
                 }
@@ -555,9 +580,11 @@ namespace RGExpandedWorldGeneration
                 }
                 generatingWorld = false;
                 Current.CreatingWorld = null;
+                Current.ProgramState = prevProgramState;
             }
         }
-        private static Texture2D GetWorldCameraPreview(Camera worldCamera, int width, int height)
+
+        private static Texture2D GetWorldCameraPreview(int width, int height)
         {
             Find.World.renderer.wantedMode = WorldRenderMode.Planet;
             Find.WorldCamera.gameObject.SetActive(true);
@@ -570,8 +597,8 @@ namespace RGExpandedWorldGeneration
             RenderTexture renderTexture = new RenderTexture(width, height, 24);
             Texture2D screenShot = new Texture2D(width, height, TextureFormat.RGBA32, false);
 
-            worldCamera.targetTexture = renderTexture;
-            worldCamera.Render();
+            Find.WorldCamera.targetTexture = renderTexture;
+            Find.WorldCamera.Render();
 
             ExpandableWorldObjectsUtility.ExpandableWorldObjectsUpdate();
             Find.World.renderer.DrawWorldLayers();
@@ -582,7 +609,7 @@ namespace RGExpandedWorldGeneration
             RenderTexture.active = renderTexture;
             screenShot.ReadPixels(rect, 0, 0);
             screenShot.Apply();
-            worldCamera.targetTexture = null;
+            Find.WorldCamera.targetTexture = null;
             RenderTexture.active = null;
 
             Find.WorldCamera.gameObject.SetActive(false);
