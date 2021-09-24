@@ -423,16 +423,21 @@ namespace RGExpandedWorldGeneration
                 {
                     texSpinAngle -= 360f;
                 }
-                texSpinAngle += 3;
+                texSpinAngle += 3f;
             }
-            if (Prefs.UIScale != 1f)
-            {
-                GUI.DrawTexture(generateButtonRect, GeneratePreview);
-            }
-            else
-            {
-                Widgets.DrawTextureRotated(generateButtonRect, GeneratePreview, texSpinAngle);
-            }
+
+            // The existing helper functions for drawing a rotated texture do not work correctly when UI scaling is set.
+            // Draw the rotated Generate Preview button texture using GL directly instead.
+            Matrix4x4 m = Matrix4x4.identity;
+            m *= Matrix4x4.Translate(generateButtonRect.center);
+            m *= Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, texSpinAngle));
+            m *= Matrix4x4.Translate(-generateButtonRect.center);
+
+            GL.PushMatrix();
+            GL.MultMatrix(m);
+            Graphics.DrawTexture(generateButtonRect, GeneratePreview);
+            GL.PopMatrix();
+
             if (Mouse.IsOver(generateButtonRect))
             {
                 Widgets.DrawHighlightIfMouseover(generateButtonRect);
