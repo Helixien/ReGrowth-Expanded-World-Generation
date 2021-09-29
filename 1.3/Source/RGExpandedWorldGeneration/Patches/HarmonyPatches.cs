@@ -124,6 +124,7 @@ namespace RGExpandedWorldGeneration
         }
     }
 
+    [StaticConstructorOnStartup]
     [HarmonyPatch(typeof(Page_CreateWorldParams), "DoWindowContents")]
     public static class Page_CreateWorldParams_Patch
     {

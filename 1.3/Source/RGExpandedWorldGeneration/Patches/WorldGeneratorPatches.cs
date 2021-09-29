@@ -24,6 +24,11 @@ namespace RGExpandedWorldGeneration
     {
         public static void Prefix(ref FloatRange ___ElevationRange)
         {
+            if (Page_CreateWorldParams_Patch.tmpWorldGenerationPreset is null)
+            {
+                Page_CreateWorldParams_Patch.tmpWorldGenerationPreset = new WorldGenerationPreset();
+                Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.Init();
+            }
             ___ElevationRange = new FloatRange(-500f * Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.seaLevel, 5000f);
         }
     }
@@ -76,6 +81,14 @@ namespace RGExpandedWorldGeneration
 
         private static float GetScoreAdjusted(BiomeDef biomeDef, float score)
         {
+            if (!Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets.ContainsKey(biomeDef.defName))
+            {
+                Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName] = 0;
+            }
+            if (!Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeCommonalities.ContainsKey(biomeDef.defName))
+            {
+                Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] = 10;
+            }
             var scoreOffset = Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeScoreOffsets[biomeDef.defName];
             score += scoreOffset;
             var biomeCommonalityOverride = Page_CreateWorldParams_Patch.tmpWorldGenerationPreset.biomeCommonalities[biomeDef.defName] / 10f;

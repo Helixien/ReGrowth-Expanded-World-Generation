@@ -25,5 +25,7 @@
 		<li>Ludeon.RimWorld.Royalty</li>
 		<li>Ludeon.RimWorld.Ideology</li>
 	</loadAfter>
-
+	<incompatibleWith>
+		<li>neitsa.PrepareLanding</li> <!-- they have destructive prefixes touching world generation. We can't do anything about them, sadly. -->
+	</incompatibleWith>
 </ModMetaData>
